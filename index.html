@@ -91,8 +91,8 @@ nav button{flex:1;border:0;background:none;font:inherit;font-size:12px;font-weig
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
-const $=id=>document.getElementById(id),L=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},P=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-let U=L("ce2_user",null),R=L("ce2_reports",[]),CR=L("ce2_credits",0),S=L("ce2_set",{thr:15,det:"",api:""}),role="Citizen",selId=null;
+const $=id=>document.getElementById(id),LS=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},P=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let U=LS("ce2_user",null),R=LS("ce2_reports",[]),CR=LS("ce2_credits",0),S=LS("ce2_set",{thr:15,det:"",api:""}),role="Citizen",selId=null;
 const COST={Low:[300,800],Medium:[800,2000],High:[2000,5000]},SV={Low:1,Medium:2,High:3},COL={High:"#e5484d",Medium:"#f5a524",Low:"#17a673"};
 const toast=t=>{const e=$("toast");e.textContent=t;e.style.display="block";setTimeout(()=>e.style.display="none",2600)};
 const inr=n=>"₹"+n.toLocaleString("en-IN");

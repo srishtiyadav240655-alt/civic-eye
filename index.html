@@ -3,6 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Civic Eye – Drive, Detect, Report</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root{--navy:#12284c;--blue:#2f7bff;--sky:#eaf2ff;--ink:#16213a;--mut:#667290;--line:#dbe5f6;--hi:#e5484d;--md:#f5a524;--lo:#17a673;box-sizing:border-box}
 *{box-sizing:border-box}html,body{margin:0}
@@ -36,7 +37,7 @@ h3{margin:0 0 8px;color:var(--navy);font-size:17px}
 .item{background:var(--sky);border-left:5px solid var(--mut);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer}.item.High{border-left-color:var(--hi)}.item.Medium{border-left-color:var(--md)}.item.Low{border-left-color:var(--lo)}
 .item .t{display:flex;justify-content:space-between;font-weight:700}.item .m{font-size:12.5px;color:var(--mut)}
 .tag{font-size:11.5px;background:#fff;border-radius:99px;padding:1px 8px;margin-right:4px}
-#map{width:100%;height:auto;background:#e8f0ff;border-radius:14px;display:block}.pin{cursor:pointer;stroke:#fff;stroke-width:2}
+
 .bar{height:10px;background:var(--sky);border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--blue)}
 input[type=range]{width:100%}
 nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));z-index:6}
@@ -74,7 +75,7 @@ nav button{flex:1;border:0;background:none;font:inherit;font-size:12px;font-weig
  <p class="note">+10 credits per new confirmed pothole, +2 for confirming an existing one. Demo, unverified and guest reports earn nothing.</p><div id="lead"></div></div></section>
 
 <section class="view" id="map"><div class="card"><div class="row"><h3 style="margin:0;flex:1">Pothole map</h3><label style="margin:0"><input type="checkbox" id="heat"> Heatmap</label></div>
- <svg id="mapSvg" viewBox="0 0 800 460"></svg><div id="detail"></div><div id="ana"></div></div></section>
+ <div id="mapBox" style="height:380px;border-radius:14px;position:relative;z-index:0"></div><div id="detail"></div><div id="ana"></div></div></section>
 
 <section class="view" id="history"><div class="card"><h3>History</h3><div id="hist"></div></div></section>
 
@@ -88,6 +89,7 @@ nav button{flex:1;border:0;background:none;font:inherit;font-size:12px;font-weig
 <nav id="nav"><button data-v="home" class="on"><span>🏠</span>Home</button><button data-v="drive"><span>🚗</span>Drive</button><button data-v="rewards"><span>⭐</span>Rewards</button><button data-v="map"><span>🗺️</span>Map</button><button data-v="history"><span>🕘</span>History</button><button data-v="profile"><span>👤</span>Profile</button></nav>
 </div><div class="toast" id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 const $=id=>document.getElementById(id),L=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},P=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 let U=L("ce2_user",null),R=L("ce2_reports",[]),CR=L("ce2_credits",0),S=L("ce2_set",{thr:15,det:"",api:""}),role="Citizen",selId=null;
@@ -103,7 +105,7 @@ document.querySelectorAll(".roles button").forEach(b=>b.onclick=()=>{role=b.data
 $("signin").onclick=()=>{if(role!=="Guest"&&(!$("em").value.trim()||!$("pw").value))return toast("Enter your email or phone and password");U={name:role==="Guest"?"Guest User":$("em").value.trim().split("@")[0],role};P("ce2_user",U);boot()};
 $("out").onclick=()=>{stopDrive();U=null;localStorage.removeItem("ce2_user");boot()};
 function boot(){$("login").classList.toggle("hide",!!U);$("app").classList.toggle("hide",!U);if(!U)return;$("who").innerHTML=U.name+"<br>"+U.role;$("pName").textContent=U.name+" · "+U.role;$("thr").value=S.thr;$("thrV").textContent=S.thr;$("det").value=S.det;$("api").value=S.api;go("home");refresh()}
-function go(v){document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.id===v));refresh()}
+function go(v){if(v==='map')fitted=false;document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.id===v));refresh()}
 document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>go(b.dataset.v));
 
 /* reports */
@@ -150,15 +152,19 @@ function refresh(){if(!U)return;
  $("syncN").textContent=R.filter(r=>!r.synced).length+" report(s) waiting to sync"+(S.api?"":" (no Report API set, data stays on this device)");
  $("hist").querySelectorAll(".item").forEach(e=>e.onclick=()=>{selId=e.dataset.id;go("map")});drawMap()}
 const card=r=>`<div class="item ${r.sev}" data-id="${r.id}"><div class="t"><span>${r.type} · ${r.sev}</span><span>${inr(r.cost[0])}–${inr(r.cost[1])}</span></div><div class="m"><span class="tag">${r.st}</span><span class="tag">${r.src}</span><span class="tag">${r.hits} report${r.hits>1?"s":""}</span>${r.lat.toFixed(5)}, ${r.lng.toFixed(5)} · ${new Date(r.ts).toLocaleString()}</div></div>`;
-function drawMap(){const s=$("mapSvg");if(!s)return;if(!R.length){s.innerHTML='<text x="400" y="230" text-anchor="middle" fill="#667290" font-size="18">No reports yet</text>';$("detail").innerHTML="";$("ana").innerHTML="";return}
- const la=R.map(r=>r.lat),ln=R.map(r=>r.lng),pad=.0006,a=Math.min(...la)-pad,b=Math.max(...la)+pad,c=Math.min(...ln)-pad,d=Math.max(...ln)+pad,k=Math.cos((a+b)/2*Math.PI/180),w=(d-c)*k,h=b-a,sc=Math.min(760/w,420/h);
- const xy=r=>[400+((r.lng-(c+d)/2)*k)*sc,230-(r.lat-(a+b)/2)*sc];
- let g='<defs><radialGradient id="hg"><stop offset="0" stop-color="#e5484d" stop-opacity=".75"/><stop offset="1" stop-color="#e5484d" stop-opacity="0"/></radialGradient></defs>';
- if($("heat").checked)R.filter(r=>r.st!=="Fixed").forEach(r=>{const[x,y]=xy(r);g+=`<circle cx="${x}" cy="${y}" r="${30+SV[r.sev]*r.hits*10}" fill="url(#hg)"/>`});
- R.forEach(r=>{const[x,y]=xy(r);g+=`<circle class="pin" data-id="${r.id}" cx="${x}" cy="${y}" r="${8+Math.min(r.hits*2,10)}" fill="${COL[r.sev]}" opacity="${r.st==="Fixed"?.35:.95}" ${selId===r.id?'stroke="#12284c" stroke-width="3"':""}/>`});
- s.innerHTML=g;s.querySelectorAll(".pin").forEach(p=>p.onclick=()=>{selId=p.dataset.id;drawMap()});
- const r=R.find(x=>x.id===selId);$("detail").innerHTML=r?card(r)+(gov()?`<div class="row"><button class="btn" onclick="setSt('${r.id}','Verified')">Verify</button><button class="btn ok" onclick="setSt('${r.id}','Fixed')">Mark fixed</button></div>`:""):'<p class="note">Tap a pin for details. Pin size grows with the number of merged reports.</p>';
- if(gov()){const cnt=x=>R.filter(r=>r.sev===x).length;$("ana").innerHTML=`<h3 style="margin-top:14px">Analytics</h3><p class="note">High ${cnt("High")} · Medium ${cnt("Medium")} · Low ${cnt("Low")} · Pending ${R.filter(r=>r.st==="Pending").length} · Verified ${R.filter(r=>r.st==="Verified").length} · Fixed ${R.filter(r=>r.st==="Fixed").length}</p>`}else $("ana").innerHTML=""}
+let LM=null,LL=null,fitted=false;
+function drawMap(){
+const box=$("mapBox");if(!box||typeof L==="undefined"||!$("map").classList.contains("on"))return;
+if(!LM){LM=L.map(box).setView([22.7196,75.8577],13);L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap contributors"}).addTo(LM);LL=L.layerGroup().addTo(LM)}
+setTimeout(()=>LM.invalidateSize(),60);LL.clearLayers();
+if(!R.length){$("detail").innerHTML='<p class="note">No reports yet. Use Simulate or start a survey.</p>';$("ana").innerHTML="";return}
+const pts=R.filter(x=>x.lat!=null);
+if($("heat").checked)pts.filter(x=>x.st!=="Fixed").forEach(x=>L.circle([x.lat,x.lng],{radius:25+SV[x.sev]*x.hits*15,weight:0,fillColor:"#e5484d",fillOpacity:.25}).addTo(LL));
+pts.forEach(x=>{const m=L.circleMarker([x.lat,x.lng],{radius:8+Math.min(x.hits*2,10),color:selId===x.id?"#12284c":"#fff",weight:selId===x.id?4:2,fillColor:COL[x.sev],fillOpacity:x.st==="Fixed"?.35:.95}).addTo(LL);m.on("click",()=>{selId=x.id;drawMap()})});
+if(!fitted&&pts.length){const sel=pts.find(x=>x.id===selId);if(sel)LM.setView([sel.lat,sel.lng],18);else LM.fitBounds(L.latLngBounds(pts.map(x=>[x.lat,x.lng])).pad(.3),{maxZoom:18});fitted=true}
+const r=R.find(x=>x.id===selId);$("detail").innerHTML=r?card(r)+(gov()?`<div class="row"><button class="btn" onclick="setSt('${r.id}','Verified')">Verify</button><button class="btn ok" onclick="setSt('${r.id}','Fixed')">Mark fixed</button></div>`:""):'<p class="note">Tap a pin for details. Pin size grows with the number of merged reports.</p>';
+if(gov()){const cnt=x=>R.filter(r=>r.sev===x).length;$("ana").innerHTML=`<h3 style="margin-top:14px">Analytics</h3><p class="note">High ${cnt("High")} · Medium ${cnt("Medium")} · Low ${cnt("Low")} · Pending ${R.filter(r=>r.st==="Pending").length} · Verified ${R.filter(r=>r.st==="Verified").length} · Fixed ${R.filter(r=>r.st==="Fixed").length}</p>`}else $("ana").innerHTML=""}
+
 $("heat").onchange=drawMap;
 
 /* profile */
